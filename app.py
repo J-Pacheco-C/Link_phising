@@ -13,7 +13,9 @@ import json
 import os
 from datetime import datetime, timezone
 
+import requests
 from flask import Flask, jsonify, render_template, request
+from user_agents import parse as parse_user_agent
 
 app = Flask(__name__)
 
@@ -26,20 +28,99 @@ def guardar_registro(registro: dict) -> None:
         f.write(json.dumps(registro, ensure_ascii=False) + "\n")
 
 
+def obtener_ip_real() -> str:
+    """
+    Render (y la mayoría de hostings) ponen tu app detrás de un proxy.
+    El header X-Forwarded-For puede traer varias IPs separadas por coma
+    (cada "salto" de red); la IP real del usuario es la PRIMERA.
+    """
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.remote_addr
+
+
+def parsear_user_agent(ua_string: str) -> dict:
+    """
+    Convierte el string crudo del User-Agent en campos legibles.
+    Ej: "Mozilla/5.0 (Windows NT 10.0...) Chrome/154..." ->
+        navegador: Chrome, version: 154, sistema_operativo: Windows 10, es_movil: False
+    """
+    if not ua_string:
+        return {
+            "navegador": "desconocido",
+            "version_navegador": "desconocido",
+            "sistema_operativo": "desconocido",
+            "es_movil": None,
+            "tipo_dispositivo": "desconocido",
+        }
+    ua = parse_user_agent(ua_string)
+    if ua.is_mobile:
+        tipo_dispositivo = "móvil"
+    elif ua.is_tablet:
+        tipo_dispositivo = "tablet"
+    elif ua.is_pc:
+        tipo_dispositivo = "escritorio"
+    else:
+        tipo_dispositivo = "otro"
+    return {
+        "navegador": ua.browser.family,
+        "version_navegador": ua.browser.version_string,
+        "sistema_operativo": f"{ua.os.family} {ua.os.version_string}".strip(),
+        "es_movil": ua.is_mobile,
+        "tipo_dispositivo": tipo_dispositivo,
+    }
+
+
+def geolocalizar_ip(ip: str) -> dict:
+    """
+    Geolocalización PASIVA por IP: solo da precisión de ciudad/región,
+    nunca de calle (esa limitación es física, no del servicio).
+    Usa ip-api.com, gratis para uso no comercial, sin API key.
+    """
+    # IPs locales/privadas no se pueden geolocalizar (ej. pruebas en localhost)
+    if not ip or ip.startswith(("127.", "10.", "192.168.", "172.")):
+        return {"geo_pais": None, "geo_ciudad": None, "geo_region": None, "geo_isp": None}
+
+    try:
+        resp = requests.get(
+            f"http://ip-api.com/json/{ip}",
+            params={"fields": "status,country,regionName,city,isp,query"},
+            timeout=3,
+        )
+        data = resp.json()
+        if data.get("status") == "success":
+            return {
+                "geo_pais": data.get("country"),
+                "geo_ciudad": data.get("city"),
+                "geo_region": data.get("regionName"),
+                "geo_isp": data.get("isp"),
+            }
+    except requests.RequestException:
+        pass
+
+    return {"geo_pais": None, "geo_ciudad": None, "geo_region": None, "geo_isp": None}
+
+
 def capturar_datos_pasivos() -> dict:
     """
-    Todo esto viaja SOLO en los headers HTTP / capa TCP del request.
+    Todo esto se obtiene SOLO con el request HTTP (headers + IP) más un
+    enriquecimiento automático (parseo de user-agent + geolocalización por IP).
     No requiere que el usuario haga nada ni que cargue JavaScript.
     """
-    return {
+    ip = obtener_ip_real()
+    registro = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "ip": request.headers.get("X-Forwarded-For", request.remote_addr),
-        "user_agent": request.headers.get("User-Agent"),
+        "ip": ip,
+        "user_agent_crudo": request.headers.get("User-Agent"),
         "idioma": request.headers.get("Accept-Language"),
         "referer": request.headers.get("Referer"),
         "host_solicitado": request.headers.get("Host"),
         "tipo": "pasivo",
     }
+    registro.update(parsear_user_agent(request.headers.get("User-Agent")))
+    registro.update(geolocalizar_ip(ip))
+    return registro
 
 
 @app.route("/")
@@ -63,12 +144,18 @@ def registrar_activo():
     y, si el usuario aceptó, geolocalización.
     """
     datos_cliente = request.get_json(silent=True) or {}
+    ip = obtener_ip_real()
     registro = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "ip": request.headers.get("X-Forwarded-For", request.remote_addr),
+        "ip": ip,
         "tipo": "activo",
         **datos_cliente,
     }
+    # Si el usuario dio permiso de GPS, esos datos (geo_lat/geo_lon) ya vienen
+    # en datos_cliente con precisión real de metros — no los pisamos.
+    # Si NO dio permiso, al menos dejamos la geolocalización aproximada por IP.
+    if "geo_lat" not in registro:
+        registro.update(geolocalizar_ip(ip))
     guardar_registro(registro)
     return jsonify({"status": "ok"})
 
