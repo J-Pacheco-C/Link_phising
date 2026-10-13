@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Dashboard - Registros capturados</title>
+<style>
+  body { font-family: Arial, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #222; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 20px; }
+  th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; vertical-align: top; }
+  th { background: #f3f4f6; }
+  .pasivo { background: #eff6ff; }
+  .activo { background: #f0fdf4; }
+</style>
+</head>
+<body>
+  <h1>Registros capturados ({{ registros|length }})</h1>
+  <p>Vista de demo para la presentación. En un proyecto real esto llevaría autenticación.</p>
+  <table>
+    <tr>
+      <th>Tipo</th>
+      <th>Timestamp</th>
+      <th>IP</th>
+      <th>Detalle (JSON completo)</th>
+    </tr>
+    {% for r in registros|reverse %}
+    <tr class="{{ r.tipo }}">
+      <td>{{ r.tipo }}</td>
+      <td>{{ r.timestamp }}</td>
+      <td>{{ r.ip }}</td>
+      <td><code>{{ r }}</code></td>
+    </tr>
+    {% endfor %}
+  </table>
+</body>
+</html>

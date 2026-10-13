@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Demo - Ciberseguridad</title>
+<style>
+  body { font-family: Arial, sans-serif; max-width: 600px; margin: 60px auto; padding: 0 20px; color: #222; }
+  h1 { font-size: 22px; }
+  button { background: #2563eb; color: white; border: none; padding: 10px 18px; border-radius: 6px; cursor: pointer; font-size: 15px; }
+  button:hover { background: #1d4ed8; }
+  #estado { margin-top: 16px; font-size: 14px; color: #555; }
+</style>
+</head>
+<body>
+  <h1>Demo educativa — Recolección de datos vía link</h1>
+  <p>Este sitio es parte de una práctica de la clase de ciberseguridad. Al entrar
+  aquí ya se registraron algunos datos técnicos básicos (IP, navegador, idioma).</p>
+  <p>Si aceptas, también se recolectarán datos adicionales de tu navegador
+  (resolución de pantalla, zona horaria, etc.) solo con fines de demostración.</p>
+
+  <button id="btnAceptar">Aceptar y continuar</button>
+  <div id="estado"></div>
+
+  <script>
+    document.getElementById('btnAceptar').addEventListener('click', async () => {
+      const estado = document.getElementById('estado');
+      estado.textContent = 'Recolectando datos del navegador...';
+
+      // --- Datos activos: APIs públicas del navegador, no requieren permiso ---
+      const datos = {
+        resolucion_pantalla: `${screen.width}x${screen.height}`,
+        resolucion_ventana: `${window.innerWidth}x${window.innerHeight}`,
+        zona_horaria: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        idioma_navegador: navigator.language,
+        plataforma: navigator.platform,
+        nucleos_cpu: navigator.hardwareConcurrency || 'no disponible',
+        memoria_aprox_gb: navigator.deviceMemory || 'no disponible',
+      };
+
+      // --- Dato activo CON consentimiento explícito: geolocalización GPS ---
+      // El navegador mostrará su propio popup de permiso (esto es intencional,
+      // para la parte de la presentación sobre consentimiento regulado por W3C).
+      await new Promise((resolve) => {
+        if (!navigator.geolocation) return resolve();
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            datos.geo_lat = pos.coords.latitude;
+            datos.geo_lon = pos.coords.longitude;
+            resolve();
+          },
+          () => resolve(), // si el usuario lo niega, seguimos sin ese dato
+          { timeout: 4000 }
+        );
+      });
+
+      await fetch('/registrar-activo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(datos),
+      });
+
+      estado.textContent = 'Listo, gracias por participar en la demo.';
+    });
+  </script>
+</body>
+</html>
