@@ -20,16 +20,44 @@
       <th>Tipo</th>
       <th>Timestamp</th>
       <th>IP</th>
-      <th>Detalle (JSON completo)</th>
+      <th>Ubicación</th>
+      <th>Dispositivo / Navegador</th>
+      <th>Otros datos</th>
+      <th>JSON completo</th>
     </tr>
     {% for r in registros|reverse %}
     <tr class="{{ r.tipo }}">
       <td>{{ r.tipo }}</td>
       <td>{{ r.timestamp }}</td>
       <td>{{ r.ip }}</td>
+      <td>
+        {% if r.geo_lat %}
+          📍 GPS exacto: {{ r.geo_lat }}, {{ r.geo_lon }}
+        {% elif r.geo_ciudad %}
+          {{ r.geo_ciudad }}, {{ r.geo_region }}, {{ r.geo_pais }}<br>
+          <small>ISP: {{ r.geo_isp }}</small>
+        {% else %}
+          —
+        {% endif %}
+      </td>
+      <td>
+        {% if r.navegador %}
+          {{ r.navegador }} {{ r.version_navegador }}<br>
+          {{ r.sistema_operativo }}<br>
+          <small>{{ r.tipo_dispositivo }}</small>
+        {% else %}
+          —
+        {% endif %}
+      </td>
+      <td>
+        {% if r.resolucion_pantalla %}Pantalla: {{ r.resolucion_pantalla }}<br>{% endif %}
+        {% if r.zona_horaria %}TZ: {{ r.zona_horaria }}<br>{% endif %}
+        {% if r.idioma %}Idioma: {{ r.idioma }}{% endif %}
+      </td>
       <td><code>{{ r }}</code></td>
     </tr>
     {% endfor %}
   </table>
 </body>
 </html>
+
